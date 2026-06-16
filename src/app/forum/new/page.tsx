@@ -3,7 +3,6 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
-import { supabase } from "@/lib/supabase"
 import { ArticleEditorForm, type ArticleFormValues } from "@/components/forum/article-editor-form"
 
 export default function NewArticlePage() {
@@ -13,28 +12,28 @@ export default function NewArticlePage() {
   const handleSubmit = async (values: ArticleFormValues) => {
     setLoading(true)
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      alert("You must be logged in to publish an article.")
-      setLoading(false)
-      return
-    }
+    const response = await fetch("/api/articles/submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(values),
+    })
 
-    const { error } = await supabase
-      .from("articles")
-      .insert({
-        title: values.title,
-        abstract: values.abstract,
-        content: values.content,
-        author_id: session.user.id,
-        subject_tags: values.subjectTags,
-        school_tags: values.schoolTags,
-      })
+    const result = await response.json()
 
-    if (error) {
-      alert(error.message)
+    if (!response.ok) {
+      alert(result.error || "Unable to submit article.")
     } else {
-      router.push("/forum")
+      if (result.status === "approved") {
+        router.push(`/forum/${result.id}`)
+      } else if (result.status === "rejected") {
+        alert(result.reason || "This article was rejected by automated moderation. An administrator can still approve it manually.")
+        router.push("/forum")
+      } else {
+        alert("Submitted for review. An administrator will approve it before it appears publicly.")
+        router.push("/forum")
+      }
       router.refresh()
     }
 

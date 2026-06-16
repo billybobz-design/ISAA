@@ -29,7 +29,12 @@ export default async function AdminPage() {
     documents: [],
     users: [],
     tags: [],
-    announcements: []
+    announcements: [],
+    pending_articles: [],
+    moderation_keyword_lists: [],
+    moderation_keyword_count: 0,
+    active_moderation_keyword_count: 0,
+    reports: []
   }
 
   return (
