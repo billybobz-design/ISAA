@@ -9,7 +9,7 @@ export interface ModerationResult {
   source: "keyword" | "llm" | "manual"
 }
 
-interface ModerationLlmSettings {
+export interface ModerationLlmSettings {
   enabled: boolean
   baseUrl: string
   apiKey: string | null
@@ -24,7 +24,7 @@ function isModerationStatus(value: unknown): value is ModerationStatus {
   return value === "approved" || value === "pending" || value === "rejected"
 }
 
-function normalizeResponsesUrl(baseUrl: string) {
+export function normalizeResponsesUrl(baseUrl: string) {
   const trimmed = baseUrl.trim().replace(/\/+$/, "")
 
   if (trimmed.endsWith("/responses")) return trimmed
@@ -66,6 +66,76 @@ async function loadModerationLlmSettings(): Promise<ModerationLlmSettings | null
   }
 }
 
+export async function callModerationLlm(
+  settings: ModerationLlmSettings,
+  input: {
+    title: string
+    abstract: string
+    content: string
+  }
+): Promise<ModerationResult> {
+  const response = await fetch(settings.baseUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${settings.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      input: [
+        {
+          role: "system",
+          content: settings.prompt,
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            title: input.title,
+            abstract: input.abstract,
+            content: input.content.slice(0, 8000),
+          }),
+        },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "academic_moderation",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["approved", "pending", "rejected"] },
+              reason: { type: ["string", "null"] },
+              score: { type: ["number", "null"], minimum: 0, maximum: 1 },
+            },
+            required: ["status", "reason", "score"],
+          },
+        },
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "")
+    throw new Error(errorText || `LLM request failed with HTTP ${response.status}`)
+  }
+
+  const data = await response.json()
+  const text = data.output_text || data.output?.[0]?.content?.[0]?.text
+  const parsed = JSON.parse(text) as Partial<ModerationResult>
+
+  if (!isModerationStatus(parsed.status)) {
+    throw new Error("LLM returned an invalid moderation status.")
+  }
+
+  return {
+    status: parsed.status,
+    reason: typeof parsed.reason === "string" ? parsed.reason : null,
+    score: typeof parsed.score === "number" ? parsed.score : null,
+    source: "llm",
+  }
+}
+
 export async function moderateAcademicPost(input: {
   title: string
   abstract: string
@@ -93,75 +163,7 @@ export async function moderateAcademicPost(input: {
   }
 
   try {
-    const response = await fetch(llmSettings.baseUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${llmSettings.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: llmSettings.model,
-        input: [
-          {
-            role: "system",
-            content: llmSettings.prompt,
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              title: input.title,
-              abstract: input.abstract,
-              content: input.content.slice(0, 8000),
-            }),
-          },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "academic_moderation",
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                status: { type: "string", enum: ["approved", "pending", "rejected"] },
-                reason: { type: ["string", "null"] },
-                score: { type: ["number", "null"], minimum: 0, maximum: 1 },
-              },
-              required: ["status", "reason", "score"],
-            },
-          },
-        },
-      }),
-    })
-
-    if (!response.ok) {
-      return {
-        status: "pending",
-        reason: "LLM moderation unavailable; awaiting manual review",
-        score: null,
-        source: "manual",
-      }
-    }
-
-    const data = await response.json()
-    const text = data.output_text || data.output?.[0]?.content?.[0]?.text
-    const parsed = JSON.parse(text) as Partial<ModerationResult>
-
-    if (!isModerationStatus(parsed.status)) {
-      return {
-        status: "pending",
-        reason: "LLM moderation returned an invalid status; awaiting manual review",
-        score: null,
-        source: "manual",
-      }
-    }
-
-    return {
-      status: parsed.status,
-      reason: typeof parsed.reason === "string" ? parsed.reason : null,
-      score: typeof parsed.score === "number" ? parsed.score : null,
-      source: "llm",
-    }
+    return await callModerationLlm(llmSettings, input)
   } catch {
     return {
       status: "pending",

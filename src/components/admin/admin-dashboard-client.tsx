@@ -112,6 +112,7 @@ export function AdminDashboardClient({
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [keywordImportResult, setKeywordImportResult] = useState<string | null>(null)
+  const [llmTestResult, setLlmTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const keywordFileRef = useRef<HTMLInputElement>(null)
 
   // Announcement State
@@ -197,6 +198,41 @@ export function AdminDashboardClient({
     } finally {
       setLoading(null)
       setConfirmDelete(null)
+    }
+  }
+
+  const handleLlmTest = async () => {
+    setLoading("test-llm-settings")
+    setLlmTestResult(null)
+
+    try {
+      const response = await fetch("/api/admin/moderation-llm/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          baseUrl: llmBaseUrl,
+          apiKey: llmApiKey,
+          model: llmModel,
+          prompt: llmPrompt,
+        }),
+      })
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "LLM test failed.")
+      }
+
+      setLlmTestResult({
+        ok: true,
+        message: `Connected using the current unsaved form values. Test result: ${result.status}${typeof result.score === "number" ? ` (${Number(result.score).toFixed(2)})` : ""}.`,
+      })
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Unknown error"
+      setLlmTestResult({ ok: false, message })
+    } finally {
+      setLoading(null)
     }
   }
 
@@ -549,24 +585,43 @@ export function AdminDashboardClient({
               />
             </div>
 
-            <Button
-              onClick={() => wrapAction("save-llm-settings", async () => {
-                await updateModerationLlmSettings({
-                  enabled: llmEnabled,
-                  baseUrl: llmBaseUrl,
-                  apiKey: llmApiKey,
-                  clearApiKey: llmClearApiKey,
-                  model: llmModel,
-                  prompt: llmPrompt,
-                })
-                setLlmApiKey("")
-                setLlmClearApiKey(false)
-              })}
-              disabled={!llmBaseUrl.trim() || !llmModel.trim() || !llmPrompt.trim()}
-            >
-              {loading === "save-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bot className="mr-1.5 h-4 w-4" />}
-              Save LLM Settings
-            </Button>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleLlmTest}
+                disabled={!llmBaseUrl.trim() || !llmApiKey.trim() || !llmModel.trim() || !llmPrompt.trim() || loading === "test-llm-settings"}
+              >
+                {loading === "test-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Bot className="mr-1.5 h-4 w-4" />}
+                Test Connection
+              </Button>
+              <Button
+                onClick={() => wrapAction("save-llm-settings", async () => {
+                  await updateModerationLlmSettings({
+                    enabled: llmEnabled,
+                    baseUrl: llmBaseUrl,
+                    apiKey: llmApiKey,
+                    clearApiKey: llmClearApiKey,
+                    model: llmModel,
+                    prompt: llmPrompt,
+                  })
+                  setLlmApiKey("")
+                  setLlmClearApiKey(false)
+                })}
+                disabled={!llmBaseUrl.trim() || !llmModel.trim() || !llmPrompt.trim()}
+              >
+                {loading === "save-llm-settings" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-1.5 h-4 w-4" />}
+                Save LLM Settings
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Test uses only the current unsaved form values. Save separately to apply them to moderation.
+            </p>
+            {llmTestResult && (
+              <p className={`text-xs font-medium ${llmTestResult.ok ? "text-emerald-700" : "text-red-600"}`}>
+                {llmTestResult.message}
+              </p>
+            )}
           </CardContent>
         </Card>
       </TabsContent>
