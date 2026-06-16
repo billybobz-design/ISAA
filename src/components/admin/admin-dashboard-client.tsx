@@ -102,7 +102,13 @@ interface ModerationLlmSettings {
 const DEFAULT_LLM_PROMPT =
   "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
 
-export function AdminDashboardClient({ initialData }: { initialData: AdminData }) {
+export function AdminDashboardClient({
+  initialData,
+  hasServiceRoleKey,
+}: {
+  initialData: AdminData
+  hasServiceRoleKey: boolean
+}) {
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [keywordImportResult, setKeywordImportResult] = useState<string | null>(null)
@@ -469,9 +475,15 @@ export function AdminDashboardClient({ initialData }: { initialData: AdminData }
                 <p className="mt-1 text-xs text-muted-foreground">
                   If disabled or unavailable, posts that pass keywords go to manual review.
                 </p>
-                <p className="mt-1 text-xs text-amber-700">
-                  Runtime database settings require SUPABASE_SERVICE_ROLE_KEY on the server; environment variables remain available as a fallback.
-                </p>
+                {hasServiceRoleKey ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Database settings are active for runtime moderation.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Runtime database settings require SUPABASE_SERVICE_ROLE_KEY on the server; environment variables remain available as a fallback.
+                  </p>
+                )}
               </div>
               <Switch checked={llmEnabled} onCheckedChange={setLlmEnabled} aria-label="Enable LLM moderation" />
             </div>

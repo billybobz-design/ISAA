@@ -42,7 +42,10 @@ export default async function AdminPage() {
         )}
       </div>
 
-      <AdminDashboardClient initialData={initialData} />
+      <AdminDashboardClient
+        initialData={initialData}
+        hasServiceRoleKey={Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)}
+      />
     </div>
   )
 }
