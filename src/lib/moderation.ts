@@ -18,10 +18,16 @@ export interface ModerationLlmSettings {
 }
 
 const DEFAULT_MODERATION_PROMPT =
-  "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
+  "You are an academic discussion platform moderation triage system. Return only JSON with status approved or pending; reason; and score from 0 to 1. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Use pending for anything that is borderline, sensitive, suspicious, low-quality but salvageable, spam-like, abusive, harassment, sexual, doxxing, threatening, plagiarism, or obvious non-academic junk — pending posts go to a human admin for the final decision. You must never return rejected; only an administrator can reject a post. Be fair to non-native speakers and students making genuine academic contributions."
 
 function isModerationStatus(value: unknown): value is ModerationStatus {
   return value === "approved" || value === "pending" || value === "rejected"
+}
+
+function clampAutomatedStatus(status: ModerationStatus): "approved" | "pending" {
+  // Only an admin can reject a post. Any automated "rejected" decision is
+  // downgraded to "pending" so it lands in the human review queue.
+  return status === "approved" ? "approved" : "pending"
 }
 
 export function normalizeResponsesUrl(baseUrl: string) {
@@ -104,7 +110,7 @@ export async function callModerationLlm(
             type: "object",
             additionalProperties: false,
             properties: {
-              status: { type: "string", enum: ["approved", "pending", "rejected"] },
+              status: { type: "string", enum: ["approved", "pending"] },
               reason: { type: ["string", "null"] },
               score: { type: ["number", "null"], minimum: 0, maximum: 1 },
             },
@@ -128,9 +134,16 @@ export async function callModerationLlm(
     throw new Error("LLM returned an invalid moderation status.")
   }
 
+  const clamped = clampAutomatedStatus(parsed.status)
+  const reason = typeof parsed.reason === "string" ? parsed.reason : null
+  const reasonWithNote =
+    clamped !== parsed.status
+      ? `LLM flagged for rejection; routed to admin review${reason ? ` — ${reason}` : ""}`
+      : reason
+
   return {
-    status: parsed.status,
-    reason: typeof parsed.reason === "string" ? parsed.reason : null,
+    status: clamped,
+    reason: reasonWithNote,
     score: typeof parsed.score === "number" ? parsed.score : null,
     source: "llm",
   }
@@ -144,8 +157,8 @@ export async function moderateAcademicPost(input: {
 }): Promise<ModerationResult> {
   if (input.keywordHit) {
     return {
-      status: "rejected",
-      reason: `Keyword match: ${input.keywordHit.pattern}`,
+      status: "pending",
+      reason: `Keyword match: ${input.keywordHit.pattern} — awaiting admin review`,
       score: 1,
       source: "keyword",
     }
@@ -163,7 +176,8 @@ export async function moderateAcademicPost(input: {
   }
 
   try {
-    return await callModerationLlm(llmSettings, input)
+    const result = await callModerationLlm(llmSettings, input)
+    return { ...result, status: clampAutomatedStatus(result.status) }
   } catch {
     return {
       status: "pending",

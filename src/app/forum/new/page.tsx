@@ -4,12 +4,22 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 
 import { ArticleEditorForm, type ArticleFormValues } from "@/components/forum/article-editor-form"
+import { useToast } from "@/components/ui/toast"
 
 export default function NewArticlePage() {
   const [loading, setLoading] = React.useState(false)
+  const [draft, setDraft] = React.useState<ArticleFormValues>({
+    title: "",
+    abstract: "",
+    content: "",
+    subjectTags: [],
+    schoolTags: [],
+  })
   const router = useRouter()
+  const { toast } = useToast()
 
   const handleSubmit = async (values: ArticleFormValues) => {
+    setDraft(values)
     setLoading(true)
 
     const response = await fetch("/api/articles/submit", {
@@ -23,19 +33,31 @@ export default function NewArticlePage() {
     const result = await response.json()
 
     if (!response.ok) {
-      alert(result.error || "Unable to submit article.")
-    } else {
-      if (result.status === "approved") {
-        router.push(`/forum/${result.id}`)
-      } else if (result.status === "rejected") {
-        alert(result.reason || "This article was rejected by automated moderation. An administrator can still approve it manually.")
-        router.push("/forum")
-      } else {
-        alert("Submitted for review. An administrator will approve it before it appears publicly.")
-        router.push("/forum")
-      }
-      router.refresh()
+      toast({
+        variant: "error",
+        title: "Unable to submit article",
+        description: result.error || "Please review the article and try again.",
+      })
+      setLoading(false)
+      return
     }
+
+    if (result.status === "approved") {
+      toast({
+        variant: "success",
+        title: "Article published",
+        description: "Your article is live on the forum.",
+      })
+      router.push(`/forum/${result.id}`)
+    } else {
+      toast({
+        variant: "info",
+        title: "Submitted for review",
+        description: "Your article is pending. An administrator will review it before it appears publicly.",
+      })
+      router.push("/forum")
+    }
+    router.refresh()
 
     setLoading(false)
   }
@@ -49,13 +71,7 @@ export default function NewArticlePage() {
       submitLabel="Publish to Forum"
       submitIcon="send"
       submitting={loading}
-      initialValues={{
-        title: "",
-        abstract: "",
-        content: "",
-        subjectTags: [],
-        schoolTags: [],
-      }}
+      initialValues={draft}
       onSubmit={handleSubmit}
     />
   )

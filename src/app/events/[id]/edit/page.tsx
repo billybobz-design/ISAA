@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { EventEditorForm, type EventFormValues } from "@/components/events/event-editor-form"
+import { useToast } from "@/components/ui/toast"
 
 interface EditEventPageProps {
   params: Promise<{ id: string }>
@@ -31,6 +32,7 @@ interface EventRecord {
 export default function EditEventPage({ params: paramsPromise }: EditEventPageProps) {
   const params = React.use(paramsPromise)
   const router = useRouter()
+  const { toast } = useToast()
 
   const [initialValues, setInitialValues] = React.useState<EventFormValues>({
     title: "",
@@ -124,11 +126,21 @@ export default function EditEventPage({ params: paramsPromise }: EditEventPagePr
       .eq("organizer_id", session.user.id)
 
     if (error) {
-      alert(error.message)
+      toast({
+        variant: "error",
+        title: "Unable to save event",
+        description: error.message,
+      })
+      setInitialValues(values)
       setSaving(false)
       return
     }
 
+    toast({
+      variant: "success",
+      title: "Event updated",
+      description: "Your changes are live.",
+    })
     router.push(`/events/${params.id}`)
     router.refresh()
   }

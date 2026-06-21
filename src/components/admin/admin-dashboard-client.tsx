@@ -23,6 +23,7 @@ import {
   updateModerationLlmSettings,
   fetchAdminData,
 } from "@/app/admin/actions"
+import { useToast } from "@/components/ui/toast"
 
 interface AdminData {
   articles: AdminArticle[]
@@ -102,7 +103,7 @@ interface ModerationLlmSettings {
 }
 
 const DEFAULT_LLM_PROMPT =
-  "You are an academic discussion platform moderation system. Review every submitted post. Return only JSON with status approved, pending, or rejected; reason; and score from 0 to 1. Reject spam, advertising, abuse, harassment, sexual content, doxxing, threats, plagiarism requests, and obvious non-academic junk. Use pending for uncertain cases, sensitive topics, low-quality but salvageable posts, or posts requiring human context. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Be fair to non-native speakers and students making genuine academic contributions."
+  "You are an academic discussion platform moderation triage system. Return only JSON with status approved or pending; reason; and score from 0 to 1. Approve legitimate academic discussion, research proposals, event recaps, questions, and peer feedback. Use pending for anything that is borderline, sensitive, suspicious, low-quality but salvageable, spam-like, abusive, harassment, sexual, doxxing, threatening, plagiarism, or obvious non-academic junk — pending posts go to a human admin for the final decision. You must never return rejected; only an administrator can reject a post. Be fair to non-native speakers and students making genuine academic contributions."
 
 const EMPTY_ADMIN_DATA: AdminData = {
   articles: [],
@@ -134,6 +135,7 @@ export function AdminDashboardClient({
   initialData?: AdminData
   hasServiceRoleKey: boolean
 }) {
+  const { toast } = useToast()
   const [adminData, setAdminData] = useState<AdminData>(initialData || EMPTY_ADMIN_DATA)
   const [dataLoading, setDataLoading] = useState(!initialData)
   const [dataError, setDataError] = useState<string | null>(null)
@@ -184,7 +186,7 @@ export function AdminDashboardClient({
       await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
-      alert("Error: " + message)
+      toast({ variant: "error", title: "Action failed", description: message })
     } finally {
       setLoading(null)
       setConfirmDelete(null)
@@ -202,7 +204,11 @@ export function AdminDashboardClient({
   const handleKeywordUpload = async () => {
     const file = keywordFileRef.current?.files?.[0]
     if (!file) {
-      alert("Please choose a .txt file first.")
+      toast({
+        variant: "warning",
+        title: "No file selected",
+        description: "Please choose a .txt file first.",
+      })
       return
     }
 
@@ -226,7 +232,7 @@ export function AdminDashboardClient({
       await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
-      alert("Error: " + message)
+      toast({ variant: "error", title: "Import failed", description: message })
     } finally {
       setLoading(null)
     }
@@ -248,7 +254,7 @@ export function AdminDashboardClient({
       await loadAdminData()
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Unknown error"
-      alert("Error: " + message)
+      toast({ variant: "error", title: "Delete failed", description: message })
     } finally {
       setLoading(null)
       setConfirmDelete(null)
@@ -332,7 +338,7 @@ export function AdminDashboardClient({
         <Card className="shadow-sm border-slate-200">
           <CardHeader className="bg-slate-50/50 border-b pb-4">
             <CardTitle className="font-serif">Review Queue ({adminData.pending_articles?.length || 0})</CardTitle>
-            <CardDescription>Posts held by keyword or LLM screening. Approve only content that is academic and appropriate.</CardDescription>
+            <CardDescription>Posts flagged by keyword or LLM screening. Approve to publish, or Reject to block — both decisions are final and only you can make them.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             {(!adminData.pending_articles || adminData.pending_articles.length === 0) && (
@@ -345,9 +351,7 @@ export function AdminDashboardClient({
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-slate-900">{article.title}</h3>
-                        <Badge variant={article.status === "rejected" ? "destructive" : "secondary"}>
-                          {article.status === "rejected" ? "Rejected" : "Pending"}
-                        </Badge>
+                        <Badge variant="secondary">Pending</Badge>
                         <Badge variant="secondary">{article.moderation_source || "manual"}</Badge>
                         {article.moderation_score !== null && article.moderation_score !== undefined && (
                           <Badge variant="outline">score {Number(article.moderation_score).toFixed(2)}</Badge>
@@ -379,7 +383,7 @@ export function AdminDashboardClient({
                         onClick={() => wrapAction(`reject-${article.id}`, () => reviewArticle(article.id, "rejected", "Rejected by admin"))}
                       >
                         {loading === `reject-${article.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="mr-1.5 h-4 w-4" />}
-                        {article.status === "rejected" ? "Confirm Reject" : "Reject"}
+                        Reject
                       </Button>
                     </div>
                   </div>

@@ -51,6 +51,12 @@ export async function POST(request: Request) {
 
   const moderation = await moderateAcademicPost({ title, abstract, content, keywordHit })
 
+  // Belt-and-braces: only an admin can mark a post as rejected. Any automated
+  // path that still returns "rejected" gets coerced to "pending" here.
+  if (moderation.status === "rejected") {
+    moderation.status = "pending"
+  }
+
   const { data: articleId, error } = await supabase.rpc("submit_article_for_review", {
     p_title: title,
     p_abstract: abstract,
@@ -67,21 +73,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
 
-  const { data: article, error: articleError } = await supabase
-    .from("articles")
-    .select("id, status, moderation_reason, moderation_score, moderation_source")
-    .eq("id", articleId)
-    .single()
-
-  if (articleError || !article) {
-    return NextResponse.json({ error: articleError?.message || "Article was submitted but status could not be loaded." }, { status: 400 })
-  }
-
   return NextResponse.json({
-    id: article.id,
-    status: article.status,
-    reason: article.moderation_reason,
-    score: article.moderation_score,
-    source: article.moderation_source,
+    id: articleId,
+    status: moderation.status,
+    reason: moderation.reason,
+    score: moderation.score,
+    source: moderation.source,
   })
 }

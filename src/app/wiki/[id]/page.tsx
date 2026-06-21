@@ -28,6 +28,7 @@ import dynamic from "next/dynamic"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { isMissingColumnError } from "@/lib/supabase-errors"
+import { useToast } from "@/components/ui/toast"
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false })
 
@@ -50,6 +51,7 @@ interface DocumentRecord {
 
 export default function DocumentPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
   const params = use(paramsPromise)
+  const { toast } = useToast()
   const [doc, setDoc] = useState<DocumentRecord | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState("")
@@ -112,12 +114,20 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
 
   const handleUpdate = async () => {
     if (!canEdit) {
-      alert("You do not have permission to edit this document.")
+      toast({
+        variant: "error",
+        title: "Permission denied",
+        description: "You do not have permission to edit this document.",
+      })
       return
     }
     const sessionUserId = session?.user?.id
     if (!sessionUserId) {
-      alert("You must be logged in to edit this document.")
+      toast({
+        variant: "error",
+        title: "Sign in required",
+        description: "You must be logged in to edit this document.",
+      })
       return
     }
     setSaving(true)
@@ -147,7 +157,11 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
 
     if (error && isCreator && isMissingColumnError(error, "allow_public_edit")) {
       if (allowPublicEdit) {
-        alert("Public editing needs the latest database migration. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql first.")
+        toast({
+          variant: "warning",
+          title: "Migration required",
+          description: "Public editing needs the latest database migration. Apply supabase/migrations/20260423_fix_event_registration_and_wiki_permissions.sql first.",
+        })
         setSaving(false)
         return
       }
@@ -164,8 +178,17 @@ export default function DocumentPage({ params: paramsPromise }: { params: Promis
     if (!error) {
       await fetchDocument()
       setIsEditing(false)
+      toast({
+        variant: "success",
+        title: "Document saved",
+        description: "Your changes are live.",
+      })
     } else {
-      alert("Failed to save: " + error.message)
+      toast({
+        variant: "error",
+        title: "Failed to save",
+        description: error.message,
+      })
     }
     setSaving(false)
   }

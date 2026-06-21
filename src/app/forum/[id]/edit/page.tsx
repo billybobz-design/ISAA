@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { ArticleEditorForm, type ArticleFormValues } from "@/components/forum/article-editor-form"
+import { useToast } from "@/components/ui/toast"
 
 interface ArticleEditorPageProps {
   params: Promise<{ id: string }>
@@ -26,6 +27,7 @@ interface ArticleRecord {
 export default function EditArticlePage({ params: paramsPromise }: ArticleEditorPageProps) {
   const params = React.use(paramsPromise)
   const router = useRouter()
+  const { toast } = useToast()
 
   const [initialValues, setInitialValues] = React.useState<ArticleFormValues>({
     title: "",
@@ -104,11 +106,21 @@ export default function EditArticlePage({ params: paramsPromise }: ArticleEditor
       .eq("author_id", session.user.id)
 
     if (error) {
-      alert(error.message)
+      toast({
+        variant: "error",
+        title: "Unable to save article",
+        description: error.message,
+      })
+      setInitialValues(values)
       setSaving(false)
       return
     }
 
+    toast({
+      variant: "success",
+      title: "Article updated",
+      description: "Your changes are live.",
+    })
     router.push(`/forum/${params.id}`)
     router.refresh()
   }

@@ -5,17 +5,36 @@ import { useRouter } from "next/navigation"
 
 import { supabase } from "@/lib/supabase"
 import { EventEditorForm, type EventFormValues } from "@/components/events/event-editor-form"
+import { useToast } from "@/components/ui/toast"
 
 export default function NewEventPage() {
   const [loading, setLoading] = React.useState(false)
+  const [draft, setDraft] = React.useState<EventFormValues>({
+    title: "",
+    description: "",
+    organizingClubSchool: "",
+    eventDate: "",
+    location: "",
+    category: "symposium",
+    registrationDeadline: "",
+    coverImageUrl: "",
+    subjectTags: [],
+    schoolTags: [],
+  })
   const router = useRouter()
+  const { toast } = useToast()
 
   const handleSubmit = async (values: EventFormValues) => {
+    setDraft(values)
     setLoading(true)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
-      alert("You must be logged in to propose an event.")
+      toast({
+        variant: "error",
+        title: "Sign in required",
+        description: "You must be logged in to propose an event.",
+      })
       setLoading(false)
       return
     }
@@ -37,12 +56,22 @@ export default function NewEventPage() {
       })
 
     if (error) {
-      alert(error.message)
-    } else {
-      router.push("/events")
-      router.refresh()
+      toast({
+        variant: "error",
+        title: "Unable to create event",
+        description: error.message,
+      })
+      setLoading(false)
+      return
     }
 
+    toast({
+      variant: "success",
+      title: "Event proposed",
+      description: "Your event has been added to the hub.",
+    })
+    router.push("/events")
+    router.refresh()
     setLoading(false)
   }
 
@@ -55,18 +84,7 @@ export default function NewEventPage() {
       submitLabel="Propose Event"
       submitIcon="send"
       submitting={loading}
-      initialValues={{
-        title: "",
-        description: "",
-        organizingClubSchool: "",
-        eventDate: "",
-        location: "",
-        category: "symposium",
-        registrationDeadline: "",
-        coverImageUrl: "",
-        subjectTags: [],
-        schoolTags: [],
-      }}
+      initialValues={draft}
       onSubmit={handleSubmit}
     />
   )

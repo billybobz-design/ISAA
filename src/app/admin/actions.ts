@@ -4,6 +4,8 @@ import { cookies } from "next/headers"
 import { createServerClient } from "@supabase/ssr"
 import { revalidatePath } from "next/cache"
 
+import { createServiceSupabaseClient } from "@/lib/admin-supabase"
+
 // Helper to get authenticated server client and verify admin role
 async function getAdminSupabase() {
   const cookieStore = await cookies()
@@ -163,5 +165,31 @@ export async function fetchAdminData() {
   const { data, error } = await supabase.rpc("admin_fetch_all_data")
 
   if (error) throw new Error(error.message)
+
+  // Safety net: rebuild the Review Queue ourselves so it surfaces every post
+  // awaiting moderation, regardless of how the DB ended up labelling it. This
+  // covers older articles that pre-date the moderation migration and were
+  // force-rejected by the now-removed keyword trigger.
+  const serviceSupabase = createServiceSupabaseClient()
+  if (serviceSupabase) {
+    const { data: queue, error: queueError } = await serviceSupabase
+      .from("articles")
+      .select(
+        "id, title, abstract, status, moderation_reason, moderation_score, moderation_source, created_at, author:users!articles_author_id_fkey(display_name, school)"
+      )
+      .in("status", ["pending", "rejected"])
+      .order("created_at", { ascending: false })
+
+    if (!queueError) {
+      const filtered = (queue || []).filter((article) => {
+        if (article.status === "pending") return true
+        // Hide articles an admin already explicitly rejected.
+        const reason = (article.moderation_reason || "").toLowerCase()
+        return !reason.startsWith("rejected by admin")
+      })
+      return { ...(data as object), pending_articles: filtered }
+    }
+  }
+
   return data
 }
